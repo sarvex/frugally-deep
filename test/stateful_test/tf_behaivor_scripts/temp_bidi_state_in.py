@@ -10,7 +10,7 @@ REC = LSTM
 
 sequence_length = 3
 feature_dim = 1
-features_in = Input(batch_shape=(1, sequence_length, feature_dim)) 
+features_in = Input(batch_shape=(1, sequence_length, feature_dim))
 state_h_fwd_in = Input(batch_shape=(1, 1))
 state_h_bwd_in = Input(batch_shape=(1, 1))
 state_c_fwd_in = Input(batch_shape=(1, 1))
@@ -24,12 +24,8 @@ if REC == LSTM:
     stateful_rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=True))(features_in, initial_state=four_state_shape)
     rnn_inputs = [features_in, state_h_fwd_in, state_c_fwd_in, state_h_bwd_in, state_c_bwd_in]
 else:
-    if REC == SimpleRNN:
-        rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=False))(features_in, initial_state=two_state_shape)
-        stateful_rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=True))(features_in, initial_state=two_state_shape)
-    else:
-        rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=False))(features_in, initial_state=two_state_shape)
-        stateful_rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=True))(features_in, initial_state=two_state_shape)
+    rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=False))(features_in, initial_state=two_state_shape)
+    stateful_rnn_out = Bidirectional( REC(1, activation='linear', use_bias=False, return_sequences=True, return_state=False, stateful=True))(features_in, initial_state=two_state_shape)
     rnn_inputs = [features_in, state_h_fwd_in, state_h_bwd_in]
 
 stateless_model = Model(inputs=rnn_inputs, outputs=rnn_out)

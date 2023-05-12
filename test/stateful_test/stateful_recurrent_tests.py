@@ -24,10 +24,7 @@ TEST_EPSILON = 0.0001
 
 
 def get_trained_model(x_train, y_train, layer_name, n_recurrent_units, bidi):
-    if layer_name == 'LSTM':
-        REC_LAYER = LSTM
-    else:
-        REC_LAYER = GRU
+    REC_LAYER = LSTM if layer_name == 'LSTM' else GRU
     #  Define/Build/Train Training Model
     training_in_shape = x_train.shape[1:]
     training_in = Input(shape=training_in_shape)
@@ -48,17 +45,9 @@ def get_trained_model(x_train, y_train, layer_name, n_recurrent_units, bidi):
 def get_test_model(n_recurrent_units, sequence_length, feature_dim, layer_name, stateful, initialize_states, weights,
                    bidi):
     features_in = Input(batch_shape=(1, sequence_length, feature_dim))  # stateful ==> needs batch_shape specified
-    if layer_name == 'LSTM':
-        REC_LAYER = LSTM
-    else:
-        REC_LAYER = GRU
+    REC_LAYER = LSTM if layer_name == 'LSTM' else GRU
     if bidi:
-        if not initialize_states:
-            recurrent_out = Bidirectional(REC_LAYER(n_recurrent_units, return_sequences=True, stateful=stateful))(
-                features_in)
-            pred = Dense(1)(recurrent_out)
-            test_model = Model(inputs=features_in, outputs=pred)
-        else:
+        if initialize_states:
             state_h_fwd_in = Input(batch_shape=(1, n_recurrent_units))
             state_h_bwd_in = Input(batch_shape=(1, n_recurrent_units))
             state_c_fwd_in = Input(batch_shape=(1, n_recurrent_units))
@@ -75,44 +64,38 @@ def get_test_model(n_recurrent_units, sequence_length, feature_dim, layer_name, 
                     features_in, initial_state=[state_h_fwd_in, state_h_bwd_in])
                 pred = Dense(1)(recurrent_out)
                 test_model = Model(inputs=[features_in, state_h_fwd_in, state_h_bwd_in], outputs=pred)
-    else:  # not bidi
-        if not initialize_states:
-            recurrent_out = REC_LAYER(n_recurrent_units, return_sequences=True, stateful=stateful)(features_in)
+        else:
+            recurrent_out = Bidirectional(REC_LAYER(n_recurrent_units, return_sequences=True, stateful=stateful))(
+                features_in)
             pred = Dense(1)(recurrent_out)
             test_model = Model(inputs=features_in, outputs=pred)
+    elif not initialize_states:
+        recurrent_out = REC_LAYER(n_recurrent_units, return_sequences=True, stateful=stateful)(features_in)
+        pred = Dense(1)(recurrent_out)
+        test_model = Model(inputs=features_in, outputs=pred)
+    else:
+        state_h_in = Input(batch_shape=(1, n_recurrent_units))
+        state_c_in = Input(batch_shape=(1, n_recurrent_units))
+        if layer_name == 'LSTM':
+            recurrent_out = REC_LAYER(n_recurrent_units,
+                                      return_sequences=True,
+                                      stateful=stateful)(features_in, initial_state=[state_h_in, state_c_in])
+            pred = Dense(1)(recurrent_out)
+            test_model = Model(inputs=[features_in, state_h_in, state_c_in], outputs=pred)
         else:
-            state_h_in = Input(batch_shape=(1, n_recurrent_units))
-            state_c_in = Input(batch_shape=(1, n_recurrent_units))
-            if layer_name == 'LSTM':
-                recurrent_out = REC_LAYER(n_recurrent_units,
-                                          return_sequences=True,
-                                          stateful=stateful)(features_in, initial_state=[state_h_in, state_c_in])
-                pred = Dense(1)(recurrent_out)
-                test_model = Model(inputs=[features_in, state_h_in, state_c_in], outputs=pred)
-            else:
-                # GRU
-                recurrent_out = REC_LAYER(n_recurrent_units, return_sequences=True, stateful=stateful)(features_in,
-                                                                                                       initial_state=state_h_in)
-                pred = Dense(1)(recurrent_out)
-                test_model = Model(inputs=[features_in, state_h_in], outputs=pred)
+            # GRU
+            recurrent_out = REC_LAYER(n_recurrent_units, return_sequences=True, stateful=stateful)(features_in,
+                                                                                                   initial_state=state_h_in)
+            pred = Dense(1)(recurrent_out)
+            test_model = Model(inputs=[features_in, state_h_in], outputs=pred)
     test_model.compile(loss='mean_squared_error', optimizer='adam')
     if PRINT_SUMMARIES:
         test_model.summary()
     test_model.set_weights(weights)
     model_fname = './models/'
-    if bidi:
-        model_fname += 'bidi-' + layer_name
-    else:
-        model_fname += layer_name
-    if stateful:
-        model_fname += '_stateful'
-    else:
-        model_fname += '_nonstateful'
-    if initialize_states:
-        model_fname += '_init_state'
-    else:
-        model_fname += '_no_init_state'
-
+    model_fname += f'bidi-{layer_name}' if bidi else layer_name
+    model_fname += '_stateful' if stateful else '_nonstateful'
+    model_fname += '_init_state' if initialize_states else '_no_init_state'
     model_fname += '.h5'
     test_model.save(model_fname, include_optimizer=False)
     return test_model, model_fname
@@ -128,26 +111,23 @@ def eval_test_model(baseline_out, test_model, x_in, layer_name, bidi, stateful, 
             msg = '\n\nRunning '
             if bidi:
                 msg += 'Bidi-'
-            msg += layer_name + '; Sequence ' + str(s) + '; stateful ' + str(stateful) + '; Initialzied state: ' + str(
-                states_initialized) + '; State Reset: ' + str(state_reset) + '\n'
+            msg += (
+                f'{layer_name}; Sequence {str(s)}; stateful {str(stateful)}; Initialzied state: {str(states_initialized)}; State Reset: {str(state_reset)}'
+                + '\n'
+            )
             # msg += f'{layer_name}; Sequence {s}; stateful {stateful}; Initialzied state: {states_initialized}; State Reset: {state_reset}\n'
             if VERBOSE:
                 print(msg)
             pred_in = x_in[s].reshape(x_in[1:].shape)
             if not states_initialized:  # no initial state
                 pred_seq = test_model.predict(pred_in)
+            elif layer_name == 'LSTM' and bidi:
+                pred_seq = test_model.predict(
+                    [pred_in, initial_states[0], initial_states[1], initial_states[2], initial_states[3]])
+            elif layer_name == 'LSTM' or bidi:
+                pred_seq = test_model.predict([pred_in, initial_states[0], initial_states[1]])
             else:
-                if layer_name == 'LSTM':
-                    if bidi:
-                        pred_seq = test_model.predict(
-                            [pred_in, initial_states[0], initial_states[1], initial_states[2], initial_states[3]])
-                    else:
-                        pred_seq = test_model.predict([pred_in, initial_states[0], initial_states[1]])
-                else:  # GRU
-                    if bidi:
-                        pred_seq = test_model.predict([pred_in, initial_states[0], initial_states[1]])
-                    else:
-                        pred_seq = test_model.predict([pred_in, initial_states[0]])
+                pred_seq = test_model.predict([pred_in, initial_states[0]])
             pred_seq = pred_seq.reshape(sequence_length)
             results = np.append(results, pred_seq)
             if VERBOSE:
@@ -169,8 +149,7 @@ def main():
 
     # See https://www.tensorflow.org/guide/gpu
     print('Adjusting GPU-memory settings to avoid CUDA_ERROR_OUT_OF_MEMORY.')
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
+    if gpus := tf.config.experimental.list_physical_devices('GPU'):
         try:
             # Currently, memory growth needs to be the same across GPUs
             for gpu in gpus:
@@ -230,7 +209,7 @@ def main():
 
     for h5_fname in model_file_names:
         json_fname = h5_fname.replace('.h5', '.json')
-        cmd = 'python3 ../../keras_export/convert_model.py ' + h5_fname + ' ' + json_fname
+        cmd = f'python3 ../../keras_export/convert_model.py {h5_fname} {json_fname}'
         os.system(cmd)
 
     os.system('./stateful_recurrent_tests_cpp')

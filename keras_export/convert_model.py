@@ -61,9 +61,7 @@ def transform_bias(bias):
 
 def int_or_none(value):
     """Leave None values as is, convert everything else to int"""
-    if value is None:
-        return value
-    return int(value)
+    return value if value is None else int(value)
 
 
 def keras_shape_to_fdeep_tensor_shape(raw_shape):
@@ -99,7 +97,7 @@ def measure_predict(model, data_in):
     data_out = model.predict(data_in)
     end_time = datetime.datetime.now()
     duration = end_time - start_time
-    print('Forward pass took {} s.'.format(duration.total_seconds()))
+    print(f'Forward pass took {duration.total_seconds()} s.')
     return data_out, duration.total_seconds()
 
 
@@ -229,7 +227,7 @@ def prepare_filter_weights_conv_1d(weights):
 def show_conv_1d_layer(layer):
     """Serialize Conv1D layer to dict"""
     weights = layer.get_weights()
-    assert len(weights) == 1 or len(weights) == 2
+    assert len(weights) in {1, 2}
     assert len(weights[0].shape) == 3
     weights_flat = prepare_filter_weights_conv_1d(weights[0])
     assert layer.padding in ['valid', 'same', 'causal']
@@ -247,7 +245,7 @@ def show_conv_1d_layer(layer):
 def show_conv_2d_layer(layer):
     """Serialize Conv2D layer to dict"""
     weights = layer.get_weights()
-    assert len(weights) == 1 or len(weights) == 2
+    assert len(weights) in {1, 2}
     assert len(weights[0].shape) == 4
     weights_flat = prepare_filter_weights_conv_2d(weights[0])
     assert layer.padding in ['valid', 'same']
@@ -266,7 +264,7 @@ def show_separable_conv_2d_layer(layer):
     """Serialize SeparableConv2D layer to dict"""
     weights = layer.get_weights()
     assert layer.depth_multiplier == 1
-    assert len(weights) == 2 or len(weights) == 3
+    assert len(weights) in {2, 3}
     assert len(weights[0].shape) == 4
     assert len(weights[1].shape) == 4
 
@@ -291,7 +289,7 @@ def show_depthwise_conv_2d_layer(layer):
     """Serialize DepthwiseConv2D layer to dict"""
     weights = layer.get_weights()
     assert layer.depth_multiplier == 1
-    assert len(weights) in [1, 2]
+    assert len(weights) in {1, 2}
     assert len(weights[0].shape) == 4
 
     # probably incorrect for depth_multiplier > 1?
@@ -313,8 +311,7 @@ def show_batch_normalization_layer(layer):
     """Serialize batch normalization layer to dict"""
     moving_mean = K.get_value(layer.moving_mean)
     moving_variance = K.get_value(layer.moving_variance)
-    result = {}
-    result['moving_mean'] = encode_floats(moving_mean)
+    result = {'moving_mean': encode_floats(moving_mean)}
     result['moving_variance'] = encode_floats(moving_variance)
     if layer.center:
         beta = K.get_value(layer.beta)
@@ -328,7 +325,7 @@ def show_batch_normalization_layer(layer):
 def show_dense_layer(layer):
     """Serialize dense layer to dict"""
     weights = layer.get_weights()
-    assert len(weights) == 1 or len(weights) == 2
+    assert len(weights) in {1, 2}
     assert len(weights[0].shape) == 2
     weights_flat = weights[0].flatten()
     result = {
@@ -354,20 +351,14 @@ def show_prelu_layer(layer):
     weights = layer.get_weights()
     assert len(weights) == 1
     weights_flat = weights[0].flatten()
-    result = {
-        'alpha': encode_floats(weights_flat)
-    }
-    return result
+    return {'alpha': encode_floats(weights_flat)}
 
 
 def show_embedding_layer(layer):
     """Serialize Embedding layer to dict"""
     weights = layer.get_weights()
     assert len(weights) == 1
-    result = {
-        'weights': encode_floats(weights[0])
-    }
-    return result
+    return {'weights': encode_floats(weights[0])}
 
 
 def show_lstm_layer(layer):
@@ -376,8 +367,8 @@ def show_lstm_layer(layer):
     assert not layer.unroll
     weights = layer.get_weights()
     if isinstance(layer.input, list):
-        assert len(layer.input) in [1, 3]
-    assert len(weights) == 2 or len(weights) == 3
+        assert len(layer.input) in {1, 3}
+    assert len(weights) in {2, 3}
     result = {'weights': encode_floats(weights[0]),
               'recurrent_weights': encode_floats(weights[1])}
 
@@ -393,7 +384,7 @@ def show_gru_layer(layer):
     assert not layer.unroll
     assert not layer.return_state
     weights = layer.get_weights()
-    assert len(weights) == 2 or len(weights) == 3
+    assert len(weights) in {2, 3}
     result = {'weights': encode_floats(weights[0]),
               'recurrent_weights': encode_floats(weights[1])}
 
@@ -412,17 +403,17 @@ def show_cudnn_lstm_layer(layer):
     """Serialize a GPU-trained LSTM layer to dict"""
     weights = layer.get_weights()
     if isinstance(layer.input, list):
-        assert len(layer.input) in [1, 3]
+        assert len(layer.input) in {1, 3}
     assert len(weights) == 3  # CuDNN LSTM always has a bias
 
     n_gates = 4
     input_weights, recurrent_weights = transform_cudnn_weights(weights[0], weights[1], n_gates)
 
-    result = {'weights': encode_floats(input_weights),
-              'recurrent_weights': encode_floats(recurrent_weights),
-              'bias': encode_floats(transform_bias(weights[2]))}
-
-    return result
+    return {
+        'weights': encode_floats(input_weights),
+        'recurrent_weights': encode_floats(recurrent_weights),
+        'bias': encode_floats(transform_bias(weights[2])),
+    }
 
 
 def show_cudnn_gru_layer(layer):
@@ -433,11 +424,11 @@ def show_cudnn_gru_layer(layer):
     n_gates = 3
     input_weights, recurrent_weights = transform_cudnn_weights(weights[0], weights[1], n_gates)
 
-    result = {'weights': encode_floats(input_weights),
-              'recurrent_weights': encode_floats(recurrent_weights),
-              'bias': encode_floats(weights[2])}
-
-    return result
+    return {
+        'weights': encode_floats(input_weights),
+        'recurrent_weights': encode_floats(recurrent_weights),
+        'bias': encode_floats(weights[2]),
+    }
 
 
 def get_transform_func(layer):
@@ -465,12 +456,12 @@ def get_transform_func(layer):
 def show_bidirectional_layer(layer):
     """Serialize Bidirectional layer to dict"""
     forward_weights = layer.forward_layer.get_weights()
-    assert len(forward_weights) == 2 or len(forward_weights) == 3
+    assert len(forward_weights) in {2, 3}
     forward_input_transform_func, forward_recurrent_transform_func, forward_bias_transform_func = get_transform_func(
         layer.forward_layer)
 
     backward_weights = layer.backward_layer.get_weights()
-    assert len(backward_weights) == 2 or len(backward_weights) == 3
+    assert len(backward_weights) in {2, 3}
     backward_input_transform_func, backward_recurrent_transform_func, backward_bias_transform_func = get_transform_func(
         layer.backward_layer)
 
@@ -554,48 +545,45 @@ def show_time_distributed_layer(layer):
     config = layer.get_config()
     class_name = config['layer']['class_name']
 
-    if class_name in show_layer_functions:
-
-        if len(layer.input_shape) == 3:
-            input_shape_new = (layer.input_shape[0], layer.input_shape[2])
-        elif len(layer.input_shape) == 4:
-            input_shape_new = (layer.input_shape[0], layer.input_shape[2], layer.input_shape[3])
-        elif len(layer.input_shape) == 5:
-            input_shape_new = (layer.input_shape[0], layer.input_shape[2], layer.input_shape[3], layer.input_shape[4])
-        elif len(layer.input_shape) == 6:
-            input_shape_new = (layer.input_shape[0], layer.input_shape[2], layer.input_shape[3], layer.input_shape[4],
-                               layer.input_shape[5])
-        else:
-            raise Exception('Wrong input shape')
-
-        layer_function = show_layer_functions[class_name]
-        attributes = dir(layer.layer)
-
-        class CopiedLayer:
-            pass
-
-        copied_layer = CopiedLayer()
-
-        for attr in attributes:
-            try:
-                if attr not in ['input_shape', '__class__']:
-                    setattr(copied_layer, attr, getattr(layer.layer, attr))
-                elif attr == 'input_shape':
-                    setattr(copied_layer, 'input_shape', input_shape_new)
-            except Exception:
-                continue
-
-        setattr(copied_layer, "output_shape", getattr(layer, "output_shape"))
-
-        return layer_function(copied_layer)
-
-    else:
+    if class_name not in show_layer_functions:
         return None
+    if len(layer.input_shape) == 3:
+        input_shape_new = (layer.input_shape[0], layer.input_shape[2])
+    elif len(layer.input_shape) == 4:
+        input_shape_new = (layer.input_shape[0], layer.input_shape[2], layer.input_shape[3])
+    elif len(layer.input_shape) == 5:
+        input_shape_new = (layer.input_shape[0], layer.input_shape[2], layer.input_shape[3], layer.input_shape[4])
+    elif len(layer.input_shape) == 6:
+        input_shape_new = (layer.input_shape[0], layer.input_shape[2], layer.input_shape[3], layer.input_shape[4],
+                           layer.input_shape[5])
+    else:
+        raise Exception('Wrong input shape')
+
+    layer_function = show_layer_functions[class_name]
+    attributes = dir(layer.layer)
+
+    class CopiedLayer:
+        pass
+
+    copied_layer = CopiedLayer()
+
+    for attr in attributes:
+        try:
+            if attr not in ['input_shape', '__class__']:
+                setattr(copied_layer, attr, getattr(layer.layer, attr))
+            elif attr == 'input_shape':
+                setattr(copied_layer, 'input_shape', input_shape_new)
+        except Exception:
+            continue
+
+    setattr(copied_layer, "output_shape", getattr(layer, "output_shape"))
+
+    return layer_function(copied_layer)
 
 
 def get_dict_keys(d):
     """Return keys of a dictionary"""
-    return [key for key in d]
+    return list(d)
 
 
 def merge_two_disjunct_dicts(x, y):
@@ -628,9 +616,7 @@ def get_layer_weights(layer, name):
         assert not layer.keepdims
 
     show_func = get_layer_functions_dict().get(layer_type, None)
-    shown_layer = None
-    if show_func:
-        shown_layer = show_func(layer)
+    shown_layer = show_func(layer) if show_func else None
     if shown_layer:
         result[name] = shown_layer
     if show_func and layer_type == 'TimeDistributed':
@@ -656,13 +642,15 @@ def get_all_weights(model, prefix):
         name = prefix + layer.name
         assert is_ascii(name)
         if name in result:
-            raise ValueError('duplicate layer name ' + name)
+            raise ValueError(f'duplicate layer name {name}')
         if layer_type in ['Model', 'Sequential', 'Functional']:
-            result = merge_two_disjunct_dicts(result, get_all_weights(layer, name + '_'))
+            result = merge_two_disjunct_dicts(result, get_all_weights(layer, f'{name}_'))
         elif layer_type in ['TimeDistributed'] and type(layer.layer).__name__ in ['Model', 'Sequential', 'Functional']:
             inner_layer = layer.layer
             result = merge_two_disjunct_dicts(result, get_layer_weights(layer, name))
-            result = merge_two_disjunct_dicts(result, get_all_weights(inner_layer, name + "_"))
+            result = merge_two_disjunct_dicts(
+                result, get_all_weights(inner_layer, f"{name}_")
+            )
         else:
             result = merge_two_disjunct_dicts(result, get_layer_weights(layer, name))
     return result
@@ -672,9 +660,7 @@ def get_model_name(model):
     """Return .name or ._name or 'dummy_model_name'"""
     if hasattr(model, 'name'):
         return model.name
-    if hasattr(model, '_name'):
-        return model._name
-    return 'dummy_model_name'
+    return model._name if hasattr(model, '_name') else 'dummy_model_name'
 
 
 def convert_sequential_to_model(model):
@@ -698,7 +684,7 @@ def convert_sequential_to_model(model):
             model._inbound_nodes = inbound_nodes
         elif hasattr(model, 'inbound_nodes'):
             model.inbound_nodes = inbound_nodes
-    if type(model).__name__ == 'TimeDistributed':
+    elif type(model).__name__ == 'TimeDistributed':
         model.layer = convert_sequential_to_model(model.layer)
     if type(model).__name__ in ['Model', 'Functional']:
         for i in range(len(model.layers)):
@@ -801,9 +787,8 @@ def model_to_fdeep_json(model, no_tests=False):
 
     test_data = None if no_tests else gen_test_data(model)
 
-    json_output = {}
     print('Converting model architecture.')
-    json_output['architecture'] = json.loads(model.to_json())
+    json_output = {'architecture': json.loads(model.to_json())}
     json_output['image_data_format'] = K.image_data_format()
     json_output['input_shapes'] = list(map(get_layer_input_shape_tensor_shape, get_model_input_layers(model)))
     json_output['output_shapes'] = list(map(keras_shape_to_fdeep_tensor_shape, as_list(model.output_shape)))
@@ -840,10 +825,10 @@ def convert(in_path, out_path, no_tests=False):
 
     workaround_cudnn_not_found_problem()
 
-    print('loading {}'.format(in_path))
+    print(f'loading {in_path}')
     model = load_model(in_path)
     json_output = model_to_fdeep_json(model, no_tests)
-    print('writing {}'.format(out_path))
+    print(f'writing {out_path}')
 
     with open(out_path, 'w') as f:
         json.dump(json_output, f, allow_nan=False, separators=(',', ':'))
